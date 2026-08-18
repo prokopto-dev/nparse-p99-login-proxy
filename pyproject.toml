@@ -45,10 +45,7 @@ dev = ["pytest>=8.2", "pytest-timeout>=2.3", "ruff>=0.6"]
 # helpers, so exercising the real ones needs the app itself. The suite must pass
 # WITHOUT this — tests/conftest.py substitutes a faithful stub when the host is
 # absent, and CI runs both legs. See tests/conftest.py for the full reasoning.
-# Pinned rather than tracking master: the app's master already requires
-# nparseplus-sdk>=1.3, which is not on PyPI yet, so an unpinned install cannot
-# resolve. v2.14.0 is this plugin's declared min_app_version.
-host = ["nparseplus @ git+https://github.com/prokopto-dev/nparse-plus@v2.14.0"]
+host = ["nparseplus @ git+https://github.com/prokopto-dev/nparse-plus@master"]
 
 # Optional: lets source-install nParse+ users discover this plugin via pip. The
 # release zip remains the way everyone else installs it, and frozen app builds
