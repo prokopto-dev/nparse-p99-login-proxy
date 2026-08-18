@@ -1,0 +1,77 @@
+# Packaging metadata for developing and testing the plugin. Note: end users do
+# NOT pip-install plugins — they install the release zip through nParse+, or
+# drop the package directory into the app's plugins folder. This file exists for
+# your dev environment, CI, and (optionally) pip-based discovery for people who
+# run nParse+ from source.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nparse-p99-login-proxy"
+version = "0.0.0" # informational; the version that matters is PluginMeta.version
+description = "P99 Login Proxy for nParse+ — fixes the blank server-select screen on Linux/WINE and macOS/CrossOver."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "prokopto-dev" }]
+keywords = ["everquest", "project1999", "p99", "nparse", "plugin", "loginserver"]
+classifiers = [
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Games/Entertainment",
+]
+dependencies = [
+  # The SDK is on PyPI; take it from there rather than from the app repo's
+  # `sdk/` subdirectory, so a dev environment resolves the same published
+  # artifact the app bundles instead of whatever `master` happens to hold.
+  # The range mirrors PluginMeta.requires_sdk — a plugin that builds against an
+  # SDK the app would refuse is a failure you want at install time. 1.2 is the
+  # floor because that is the release that added ctx.eq_dir, ctx.eq_is_running()
+  # and nparseplus_sdk.eqfiles, all three of which this plugin needs.
+  "nparseplus-sdk>=1.2,<2",
+]
+
+[project.urls]
+Homepage = "https://github.com/prokopto-dev/nparse-p99-login-proxy"
+Issues = "https://github.com/prokopto-dev/nparse-p99-login-proxy/issues"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "pytest-timeout>=2.3", "ruff>=0.6"]
+# `nparseplus_sdk.eqfiles` is a lazy re-export of the host app's own install-file
+# helpers, so exercising the real ones needs the app itself. The suite must pass
+# WITHOUT this — tests/conftest.py substitutes a faithful stub when the host is
+# absent, and CI runs both legs. See tests/conftest.py for the full reasoning.
+host = ["nparseplus @ git+https://github.com/prokopto-dev/nparse-plus@master"]
+
+# Optional: lets source-install nParse+ users discover this plugin via pip. The
+# release zip remains the way everyone else installs it, and frozen app builds
+# carry no distribution metadata, so entry points return nothing there.
+[project.entry-points."nparseplus.plugins"]
+p99-login-proxy = "p99_login_proxy:create_plugin"
+
+# The `host` extra pins the app straight from git (it is not on PyPI).
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["p99_login_proxy"]
+
+[tool.pytest.ini_options]
+# Every socket test binds loopback and joins a thread; none should ever hang CI.
+timeout = 60
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["p99_login_proxy", "tests"]
+
+# Mirrors the host app's selection so this repo lints the same way nParse+ does.
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["p99_login_proxy"]
