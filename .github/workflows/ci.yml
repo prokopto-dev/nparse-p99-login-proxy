@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  PLUGIN_DIR: p99_login_proxy
+
+jobs:
+  test:
+    # Three OSes because this plugin is mostly sockets and file paths: the
+    # loopback bind, the select loop and the eqhost.txt newline handling all
+    # behave differently enough per platform to be worth checking, and the
+    # players who need this fix most are the ones not on Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the SDK and test dependencies
+        # From PyPI, matching PluginMeta.requires_sdk: CI should refuse the same
+        # SDK versions the app would, rather than testing against whatever the
+        # app repo's master branch holds today.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nparseplus-sdk>=1.2,<2"
+          python -m pip install pytest pytest-timeout ruff
+
+      - name: Lint
+        run: |
+          ruff check .
+          ruff format --check .
+
+      # Deliberately SDK-only: nParse+ itself is not installed here, so
+      # nparseplus_sdk.eqfiles cannot resolve and tests/conftest.py substitutes
+      # its stub. The `eqfiles` job below covers the real helpers.
+      - name: Unit tests (SDK only)
+        run: python -m pytest -q
+
+      - name: Validate plugin (load-correctness + advisory scan)
+        run: nparseplus-plugin validate "$PLUGIN_DIR"
+        shell: bash
+
+  sdk-floor:
+    # The matrix above installs ">=1.2,<2", which resolves to the newest SDK —
+    # so without this job the 1.2 floor that PluginMeta.requires_sdk actually
+    # declares would never be exercised, and a 1.3-only API could slip in and
+    # break the very hosts we claim to support.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the oldest SDK we claim to support
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "nparseplus-sdk==1.2.*" pytest pytest-timeout
+      - name: Unit tests against the declared SDK floor
+        run: python -m pytest -q
+      - name: Validate plugin
+        run: nparseplus-plugin validate p99_login_proxy
+
+  eqfiles:
+    # nparseplus_sdk.eqfiles defines none of the helpers it exports — it is a
+    # lazy forwarder to the host app's nparseplus.core.eqini, and the app is not
+    # on PyPI. This job installs it from git so tests/test_eqhost.py runs
+    # against the code that will actually execute inside nParse+, rather than
+    # only against conftest's stub.
+    runs-on: ubuntu-latest
+    continue-on-error: true # the app is a moving target; do not gate PRs on it
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install the host app from git
+        # Tracks master deliberately, so this catches a change in the real
+        # helpers before a release does. It is allowed to fail (see
+        # continue-on-error above): master's SDK floor can briefly outrun what
+        # is published on PyPI, which makes the install unresolvable through no
+        # fault of this plugin.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest pytest-timeout
+          python -m pip install "git+https://github.com/prokopto-dev/nparse-plus@master"
+      - name: Confirm the real helpers are in play
+        run: python -c "from nparseplus_sdk import eqfiles; assert eqfiles.preflight(None)"
+      - name: eqhost tests against the real eqfiles
+        run: python -m pytest -q tests/test_eqhost.py
