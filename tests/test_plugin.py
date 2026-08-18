@@ -88,6 +88,40 @@ def test_the_package_imports_without_qt():
     )
 
 
+def test_the_settings_page_module_itself_imports_without_qt():
+    """The module the package never imports is the one that would regress.
+
+    ``settings_page`` is only reached through the builder, so a stray top-level
+    ``from PySide6 import ...`` would pass every other test here and only fail
+    inside ``nparseplus-plugin validate`` on a machine without Qt.
+    """
+    import sys
+
+    from p99_login_proxy import settings_page
+
+    assert "PySide6" not in sys.modules
+    assert callable(settings_page.build_page)
+
+
+def test_the_builder_the_host_receives_is_the_settings_page_one(plugin: LoginProxyPlugin):
+    """The host calls this on the GUI thread; check the wiring, not the widgets."""
+    ctx = context()
+    plugin.activate(ctx)
+    builder = ctx.settings_pages[0].builder
+
+    called: list[object] = []
+    import p99_login_proxy.settings_page as page_module
+
+    original = page_module.build_page
+    page_module.build_page = lambda owner, parent: called.append((owner, parent)) or "widget"
+    try:
+        assert builder(sentinel := object()) == "widget"
+    finally:
+        page_module.build_page = original
+
+    assert called == [(plugin, sentinel)], "the page is built with the plugin as its owner"
+
+
 # --------------------------------------------------------------------------
 # Activation
 # --------------------------------------------------------------------------
